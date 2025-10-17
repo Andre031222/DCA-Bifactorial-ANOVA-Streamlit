@@ -1126,49 +1126,12 @@ if df is not None and 'factor_a_col' in locals():
         fig_box.update_layout(height=500, template='plotly_white', xaxis_tickangle=-45)
         st.plotly_chart(fig_box, use_container_width=True)
         
+
+
         # ==================== POST-HOC ====================
-        st.markdown('<div class="section-title">🔬 8. PRUEBAS POST-HOC</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">🔬 8. PRUEBA POST-HOC</div>', unsafe_allow_html=True)
         
         if anova_results['significant_A'] or anova_results['significant_B'] or anova_results['significant_AB']:
-            
-            # TUKEY
-            st.subheader("📊 Prueba de Tukey (HSD)")
-            
-            tukey_results = tukey_hsd_bifactorial(df, response_col, factor_a_col, factor_b_col, alpha)
-            
-            if tukey_results is not None:
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("HSD", f"{tukey_results['HSD']:.4f}")
-                with col2:
-                    st.metric("Valor q", f"{tukey_results['q_value']:.3f}")
-                with col3:
-                    st.metric("Tratamientos", tukey_results['k'])
-                
-                st.markdown('<div class="formula-box"><h4 style="color: #74b9ff;">Fórmula Tukey HSD:</h4></div>', unsafe_allow_html=True)
-                st.latex(r"HSD = q_{\alpha,k,gl_E} \times \sqrt{\frac{CM_E}{n_{arm}}}")
-                
-                st.markdown(f"""
-                <div style="background: #f8f9fa; padding: 1rem; border-radius: 8px; margin: 1rem 0;">
-                    <strong>Cálculos:</strong><br>
-                    • q = {tukey_results['q_value']:.3f}<br>
-                    • CM<sub>E</sub> = {tukey_results['MSE']:.4f}<br>
-                    • n<sub>armónica</sub> = {tukey_results['n_harmonic']:.2f}<br>
-                    • <strong>HSD = {tukey_results['HSD']:.4f}</strong>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                st.subheader("📋 Comparaciones Pareadas")
-                st.dataframe(tukey_results['comparisons'], use_container_width=True, hide_index=True)
-                
-                with st.expander("📊 Medias por Tratamiento"):
-                    st.dataframe(
-                        tukey_results['treatment_means'].sort_values('Media', ascending=False),
-                        use_container_width=True,
-                        hide_index=True
-                    )
-            
-            st.markdown("---")
             
             # DUNCAN
             st.subheader("📊 Prueba de Duncan (MRT)")
@@ -1446,8 +1409,6 @@ if df is not None and 'factor_a_col' in locals():
                 anova_results['ab_means'].to_frame(name='Media').to_excel(writer, sheet_name='Medias AB')
                 
                 if anova_results['significant_A'] or anova_results['significant_B'] or anova_results['significant_AB']:
-                    if tukey_results:
-                        tukey_results['comparisons'].to_excel(writer, sheet_name='Tukey', index=False)
                     if duncan_results:
                         duncan_results['groups'].to_excel(writer, sheet_name='Duncan', index=False)
                 
@@ -1522,7 +1483,7 @@ else:
                     <li>✓ Fórmulas matemáticas LaTeX</li>
                     <li>✓ Validación de supuestos</li>
                     <li>✓ Gráfico de interacción</li>
-                    <li>✓ Pruebas Tukey y Duncan</li>
+                    <li>✓ Prueba de Duncan</li>
                     <li>✓ Mejor tratamiento con IC</li>
                     <li>✓ Visualizaciones interactivas</li>
                     <li>✓ Resumen ejecutivo</li>
@@ -1577,7 +1538,7 @@ st.markdown(f"""
         Diseño Experimental | Universidad Nacional del Santa | {datetime.now().year}
     </p>
     <p style='margin-top: 1rem; font-size: 0.9rem; opacity: 0.9;'>
-        Sistema avanzado con fórmulas LaTeX, validación de supuestos, pruebas post-hoc,<br>
+        Sistema avanzado con fórmulas LaTeX, validación de supuestos, prueba de Duncan,<br>
         visualizaciones interactivas y reportes completos en Excel
     </p>
 </div>
