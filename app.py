@@ -511,12 +511,15 @@ def check_anova_assumptions(df, response_var, factor_a, factor_b):
     return results
 
 def tukey_hsd_bifactorial(df, response_var, factor_a, factor_b, alpha=0.05):
-    """Prueba de Tukey HSD"""
+    """Prueba de Tukey HSD - CORREGIDO"""
     df_temp = df.copy()
     df_temp['_treatment_'] = df_temp[factor_a].astype(str) + ' × ' + df_temp[factor_b].astype(str)
-    treatment_means = df_temp.groupby('_treatment_', as_index=False)[response_var].agg(['mean', 'count', 'std'])
+    
+    # CORRECCIÓN: groupby sin as_index=False, luego reset_index
+    treatment_means = df_temp.groupby('_treatment_')[response_var].agg(['mean', 'count', 'std'])
     treatment_means = treatment_means.reset_index()
     treatment_means.columns = ['Tratamiento', 'Media', 'n', 'Std']
+    
     treatments = treatment_means['Tratamiento'].tolist()
     k = len(treatments)
     
@@ -554,47 +557,14 @@ def tukey_hsd_bifactorial(df, response_var, factor_a, factor_b, alpha=0.05):
         'treatment_means': treatment_means
     }
 
-def duncan_test_bifactorial(df, response_var, factor_a, factor_b, alpha=0.05):
-    """Prueba de Duncan MRT"""
-    df_temp = df.copy()
-    df_temp['_treatment_'] = df_temp[factor_a].astype(str) + ' × ' + df_temp[factor_b].astype(str)
-    treatment_stats = df_temp.groupby('_treatment_', as_index=False)[response_var].agg(['mean', 'count', 'std'])
-    treatment_stats = treatment_stats.reset_index()
-    treatment_stats.columns = ['Tratamiento', 'Media', 'n', 'Std']
-    treatment_stats = treatment_stats.sort_values('Media', ascending=False).reset_index(drop=True)
-    
-    anova_results = calculate_anova_bifactorial(df, response_var, factor_a, factor_b)
-    if anova_results is None:
-        return None
-    
-    MSE = anova_results['MSE']
-    n = int(treatment_stats['n'].mean())
-    LSR = 3.0 * np.sqrt(MSE / n) if n > 0 and MSE > 0 else 0
-    
-    groups = []
-    current_group = 'a'
-    last_mean = treatment_stats['Media'].iloc[0]
-    groups.append(current_group)
-    
-    for i in range(1, len(treatment_stats)):
-        current_mean = treatment_stats['Media'].iloc[i]
-        if abs(last_mean - current_mean) > LSR:
-            current_group = chr(ord(current_group) + 1)
-            last_mean = current_mean
-        groups.append(current_group)
-    
-    treatment_stats['Grupo Duncan'] = groups
-    
-    return {
-        'LSR': LSR, 'MSE': MSE, 'n': n,
-        'groups': treatment_stats[['Tratamiento', 'Media', 'Grupo Duncan']]
-    }
 
 def best_treatment_with_ci(df, response_var, factor_a, factor_b, confidence=0.95):
-    """Identifica el mejor tratamiento con IC"""
+    """Identifica el mejor tratamiento con IC - CORREGIDO"""
     df_temp = df.copy()
     df_temp['_treatment_'] = df_temp[factor_a].astype(str) + ' × ' + df_temp[factor_b].astype(str)
-    treatment_stats = df_temp.groupby('_treatment_', as_index=False)[response_var].agg(['mean', 'std', 'count'])
+    
+    # CORRECCIÓN: groupby sin as_index=False, luego reset_index
+    treatment_stats = df_temp.groupby('_treatment_')[response_var].agg(['mean', 'std', 'count'])
     treatment_stats = treatment_stats.reset_index()
     treatment_stats.columns = ['Tratamiento', 'Media', 'Std', 'n']
     
@@ -1049,7 +1019,7 @@ if df is not None and 'factor_a_col' in locals():
         
         with col1:
             df_a = df[[factor_a_col, response_col]].copy()
-            main_a = df_a.groupby(factor_a_col, as_index=False)[response_col].agg(['mean', 'std', 'count'])
+            main_a = df_a.groupby(factor_a_col)[response_col].agg(['mean', 'std', 'count'])
             main_a = main_a.reset_index()
             main_a['se'] = main_a['std'] / np.sqrt(main_a['count'])
             
@@ -1080,7 +1050,8 @@ if df is not None and 'factor_a_col' in locals():
         
         with col2:
             df_b = df[[factor_b_col, response_col]].copy()
-            main_b = df_b.groupby(factor_b_col, as_index=False)[response_col].agg(['mean', 'std', 'count'])
+            main_b = df_b.groupby(factor_b_col)[response_col].agg(['mean', 'std', 'count'])
+            
             main_b = main_b.reset_index()
             main_b['se'] = main_b['std'] / np.sqrt(main_b['count'])
             
@@ -1126,52 +1097,15 @@ if df is not None and 'factor_a_col' in locals():
         fig_box.update_layout(height=500, template='plotly_white', xaxis_tickangle=-45)
         st.plotly_chart(fig_box, use_container_width=True)
         
-
-
-        # ==================== POST-HOC ====================
-        st.markdown('<div class="section-title">🔬 8. PRUEBA POST-HOC</div>', unsafe_allow_html=True)
-        
-        if anova_results['significant_A'] or anova_results['significant_B'] or anova_results['significant_AB']:
-            
-            # DUNCAN
-            st.subheader("📊 Prueba de Duncan (MRT)")
-            
-            duncan_results = duncan_test_bifactorial(df, response_col, factor_a_col, factor_b_col, alpha)
-            
-            if duncan_results is not None:
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("LSR", f"{duncan_results['LSR']:.4f}")
-                with col2:
-                    st.metric("CM_E", f"{duncan_results['MSE']:.4f}")
-                with col3:
-                    st.metric("n promedio", duncan_results['n'])
-                
-                st.markdown('<div class="formula-box"><h4 style="color: #74b9ff;">Fórmula Duncan MRT:</h4></div>', unsafe_allow_html=True)
-                st.latex(r"LSR = r_{\alpha,p,gl_E} \times \sqrt{\frac{CM_E}{n}}")
-                
-                st.markdown("""
-                <div style='background: #e3f2fd; padding: 1rem; border-radius: 8px; margin: 1rem 0;'>
-                    <strong>Interpretación:</strong> Letras iguales = NO diferentes, Letras diferentes = SÍ diferentes
-                </div>
-                """, unsafe_allow_html=True)
-                
-                duncan_display = duncan_results['groups'].copy()
-                duncan_display['Media'] = duncan_display['Media'].round(3)
-                st.dataframe(duncan_display, use_container_width=True, hide_index=True)
-        
-        else:
-            st.info("ℹ️ No se requieren pruebas post-hoc (ANOVA no significativo)")
-        
         # ==================== MEJOR TRATAMIENTO ====================
-        st.markdown('<div class="section-title">🏆 9. MEJOR TRATAMIENTO</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">🏆 8. MEJOR TRATAMIENTO</div>', unsafe_allow_html=True)
         
         best = best_treatment_with_ci(df, response_col, factor_a_col, factor_b_col, confidence=0.95)
         
         # Ranking CORREGIDO
         df_rank = df.copy()
         df_rank['_trat_rank_'] = df_rank[factor_a_col].astype(str) + ' × ' + df_rank[factor_b_col].astype(str)
-        ranking = df_rank.groupby('_trat_rank_', as_index=False)[response_col].agg(['mean', 'std', 'count'])
+        ranking = df_rank.groupby('_trat_rank_')[response_col].agg(['mean', 'std', 'count'])
         ranking = ranking.reset_index()
         ranking.columns = ['Tratamiento', 'Media', 'Std', 'n']
         ranking = ranking.sort_values('Media', ascending=False).reset_index(drop=True)
@@ -1300,7 +1234,7 @@ if df is not None and 'factor_a_col' in locals():
         """, unsafe_allow_html=True)
         
         # ==================== RESUMEN EJECUTIVO ====================
-        st.markdown('<div class="section-title">📝 10. RESUMEN EJECUTIVO</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">📝 9. RESUMEN EJECUTIVO</div>', unsafe_allow_html=True)
         
         st.markdown(f"""
         <div class="section-box" style="background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);">
@@ -1385,7 +1319,7 @@ if df is not None and 'factor_a_col' in locals():
         """, unsafe_allow_html=True)
         
         # ==================== EXPORTAR ====================
-        st.markdown('<div class="section-title">📥 11. EXPORTAR RESULTADOS</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">📥 10. EXPORTAR RESULTADOS</div>', unsafe_allow_html=True)
         
         col1, col2 = st.columns(2)
         
@@ -1407,10 +1341,6 @@ if df is not None and 'factor_a_col' in locals():
                 anova_results['a_means'].to_frame(name='Media').to_excel(writer, sheet_name=f'Medias {factor_a_col}')
                 anova_results['b_means'].to_frame(name='Media').to_excel(writer, sheet_name=f'Medias {factor_b_col}')
                 anova_results['ab_means'].to_frame(name='Media').to_excel(writer, sheet_name='Medias AB')
-                
-                if anova_results['significant_A'] or anova_results['significant_B'] or anova_results['significant_AB']:
-                    if duncan_results:
-                        duncan_results['groups'].to_excel(writer, sheet_name='Duncan', index=False)
                 
                 best_df = pd.DataFrame([{
                     'Tratamiento': best['treatment'],
@@ -1483,7 +1413,6 @@ else:
                     <li>✓ Fórmulas matemáticas LaTeX</li>
                     <li>✓ Validación de supuestos</li>
                     <li>✓ Gráfico de interacción</li>
-                    <li>✓ Prueba de Duncan</li>
                     <li>✓ Mejor tratamiento con IC</li>
                     <li>✓ Visualizaciones interactivas</li>
                     <li>✓ Resumen ejecutivo</li>
@@ -1538,8 +1467,9 @@ st.markdown(f"""
         Diseño Experimental | Universidad Nacional del Santa | {datetime.now().year}
     </p>
     <p style='margin-top: 1rem; font-size: 0.9rem; opacity: 0.9;'>
-        Sistema avanzado con fórmulas LaTeX, validación de supuestos, prueba de Duncan,<br>
+        Sistema avanzado con fórmulas LaTeX, validación de supuestos,<br>
         visualizaciones interactivas y reportes completos en Excel
     </p>
 </div>
 """, unsafe_allow_html=True)
+                                  
