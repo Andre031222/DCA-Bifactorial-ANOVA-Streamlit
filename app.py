@@ -1464,12 +1464,9 @@ st.markdown(f"""
     <p style='margin: 0.5rem 0 0 0; font-size: 1.1rem;'>
         <strong>R. Andre Vilca Solorzano</strong> | Código: <strong>221181</strong><br>
         Docente: <strong>Ing. LLUEN VALLEJOS CESAR AUGUSTO</strong><br>
-        Diseño Experimental | Universidad Nacional del Santa | {datetime.now().year}
+        Diseño Experimental | Universidad Nacional del Altiplano | {datetime.now().year}
     </p>
-    <p style='margin-top: 1rem; font-size: 0.9rem; opacity: 0.9;'>
-        Sistema avanzado con fórmulas LaTeX, validación de supuestos,<br>
-        visualizaciones interactivas y reportes completos en Excel
-    </p>
+    
 </div>
 """, unsafe_allow_html=True)
                                   
