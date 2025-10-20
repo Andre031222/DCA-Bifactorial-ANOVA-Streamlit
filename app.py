@@ -415,10 +415,170 @@ def calculate_anova_trifactorial(df, response_var, factor_a, factor_b, factor_c,
         'SSE': SSE
     }
 
+def calculate_residuals(df, response_var, factor_a, factor_b, factor_c):
+    """Calcula residuos y valores ajustados para diagnóstico"""
+    df_temp = df.copy()
+
+    # Crear columna de tratamiento
+    df_temp['_treatment_'] = (df_temp[factor_a].astype(str) + '×' +
+                              df_temp[factor_b].astype(str) + '×' +
+                              df_temp[factor_c].astype(str))
+
+    # Calcular medias por tratamiento (valores ajustados)
+    treatment_means = df_temp.groupby('_treatment_')[response_var].transform('mean')
+
+    # Calcular residuos
+    residuals = df_temp[response_var] - treatment_means
+
+    # Calcular residuos estandarizados
+    std_residuals = residuals / residuals.std()
+
+    return {
+        'observed': df_temp[response_var].values,
+        'fitted': treatment_means.values,
+        'residuals': residuals.values,
+        'standardized_residuals': std_residuals.values,
+        'treatment': df_temp['_treatment_'].values
+    }
+
+def plot_residual_diagnostics(residuals_data):
+    """Genera los 4 gráficos de diagnóstico de residuos"""
+
+    residuals = residuals_data['residuals']
+    fitted = residuals_data['fitted']
+    std_residuals = residuals_data['standardized_residuals']
+
+    # 1. Q-Q Plot (Normalidad)
+    fig_qq = go.Figure()
+
+    # Calcular cuantiles teóricos
+    sorted_residuals = np.sort(std_residuals)
+    n = len(sorted_residuals)
+    theoretical_quantiles = stats.norm.ppf(np.arange(1, n + 1) / (n + 1))
+
+    # Agregar puntos
+    fig_qq.add_trace(go.Scatter(
+        x=theoretical_quantiles,
+        y=sorted_residuals,
+        mode='markers',
+        marker=dict(size=6, color='#667eea', opacity=0.6),
+        name='Residuos'
+    ))
+
+    # Agregar línea de referencia
+    fig_qq.add_trace(go.Scatter(
+        x=theoretical_quantiles,
+        y=theoretical_quantiles,
+        mode='lines',
+        line=dict(color='red', dash='dash', width=2),
+        name='Línea teórica'
+    ))
+
+    fig_qq.update_layout(
+        title='Q-Q Plot (Gráfico Cuantil-Cuantil)',
+        xaxis_title='Cuantiles Teóricos',
+        yaxis_title='Cuantiles de la Muestra',
+        showlegend=True,
+        height=400
+    )
+
+    # 2. Residuos vs Valores Ajustados (Homocedasticidad)
+    fig_fitted = go.Figure()
+
+    fig_fitted.add_trace(go.Scatter(
+        x=fitted,
+        y=residuals,
+        mode='markers',
+        marker=dict(size=6, color='#764ba2', opacity=0.6),
+        name='Residuos'
+    ))
+
+    # Línea horizontal en y=0
+    fig_fitted.add_hline(y=0, line_dash="dash", line_color="red", line_width=2)
+
+    # Líneas de referencia ±2 desviaciones estándar
+    std_res = np.std(residuals)
+    fig_fitted.add_hline(y=2*std_res, line_dash="dot", line_color="orange", opacity=0.5)
+    fig_fitted.add_hline(y=-2*std_res, line_dash="dot", line_color="orange", opacity=0.5)
+
+    fig_fitted.update_layout(
+        title='Residuos vs Valores Ajustados',
+        xaxis_title='Valores Ajustados',
+        yaxis_title='Residuos',
+        showlegend=False,
+        height=400
+    )
+
+    # 3. Histograma de Residuos (Distribución)
+    fig_hist = go.Figure()
+
+    fig_hist.add_trace(go.Histogram(
+        x=std_residuals,
+        nbinsx=30,
+        marker=dict(color='#11998e', opacity=0.7, line=dict(color='white', width=1)),
+        name='Residuos'
+    ))
+
+    # Curva normal superpuesta
+    x_range = np.linspace(std_residuals.min(), std_residuals.max(), 100)
+    y_normal = stats.norm.pdf(x_range, 0, 1) * len(std_residuals) * (std_residuals.max() - std_residuals.min()) / 30
+
+    fig_hist.add_trace(go.Scatter(
+        x=x_range,
+        y=y_normal,
+        mode='lines',
+        line=dict(color='red', width=2),
+        name='Distribución Normal'
+    ))
+
+    fig_hist.update_layout(
+        title='Histograma de Residuos Estandarizados',
+        xaxis_title='Residuos Estandarizados',
+        yaxis_title='Frecuencia',
+        showlegend=True,
+        height=400,
+        bargap=0.1
+    )
+
+    # 4. Residuos vs Orden (Independencia)
+    fig_order = go.Figure()
+
+    order = np.arange(1, len(residuals) + 1)
+
+    fig_order.add_trace(go.Scatter(
+        x=order,
+        y=residuals,
+        mode='markers',
+        marker=dict(size=5, color='#f39c12', opacity=0.6),
+        name='Residuos'
+    ))
+
+    # Línea horizontal en y=0
+    fig_order.add_hline(y=0, line_dash="dash", line_color="red", line_width=2)
+
+    # Líneas de referencia
+    fig_order.add_hline(y=2*std_res, line_dash="dot", line_color="orange", opacity=0.5)
+    fig_order.add_hline(y=-2*std_res, line_dash="dot", line_color="orange", opacity=0.5)
+
+    fig_order.update_layout(
+        title='Residuos vs Orden de Observación',
+        xaxis_title='Orden de Observación',
+        yaxis_title='Residuos',
+        showlegend=False,
+        height=400
+    )
+
+    return {
+        'qq_plot': fig_qq,
+        'fitted_plot': fig_fitted,
+        'histogram': fig_hist,
+        'order_plot': fig_order
+    }
+
 def check_anova_assumptions(df, response_var):
     """Verificación de supuestos del ANOVA"""
     results = {}
-    
+
     # Prueba de normalidad
     if len(df) < 5000:
         stat_norm, p_norm = stats.shapiro(df[response_var])
@@ -438,13 +598,13 @@ def check_anova_assumptions(df, response_var):
             'assumption_met': p_norm > 0.05,
             'interpretation': f'Los datos {"SÍ" if p_norm > 0.05 else "NO"} siguen distribución normal (p={p_norm:.4f})'
         }
-    
+
     # Prueba de homocedasticidad (simplificada para trifactorial)
     results['homoscedasticity'] = {
         'test': 'Levene',
         'interpretation': 'Se recomienda análisis visual de residuos para diseño trifactorial'
     }
-    
+
     return results
 
 def tukey_hsd_trifactorial(df, response_var, factor_a, factor_b, factor_c, alpha=0.05):
@@ -821,11 +981,11 @@ Determinar si los factores <strong>{factor_a_col}</strong>, <strong>{factor_b_co
         if show_assumptions:
             st.markdown("---")
             st.subheader("✅ Verificación de Supuestos")
-            
+
             assumptions = check_anova_assumptions(df, response_col)
-            
+
             col1, col2 = st.columns(2)
-            
+
             with col1:
                 st.markdown("**1️⃣ Normalidad**")
                 norm = assumptions['normality']
@@ -835,10 +995,69 @@ Determinar si los factores <strong>{factor_a_col}</strong>, <strong>{factor_b_co
                         st.success(norm['interpretation'])
                     else:
                         st.warning(norm['interpretation'])
-            
+
             with col2:
                 st.markdown("**2️⃣ Homocedasticidad**")
                 st.info(assumptions['homoscedasticity']['interpretation'])
+
+            # Gráficos de Diagnóstico de Residuos
+            st.markdown("---")
+            st.subheader("📊 Diagnóstico de Residuos")
+
+            # Información sobre los gráficos
+            st.markdown("""
+            <div style='background: #e7f3ff; padding: 1rem; border-radius: 8px; border-left: 4px solid #2196F3; margin-bottom: 1rem;'>
+                <strong>📌 Guía de Interpretación de los Gráficos de Diagnóstico:</strong><br>
+                Los siguientes gráficos permiten verificar visualmente los supuestos del ANOVA y detectar posibles problemas en el modelo.
+            </div>
+            """, unsafe_allow_html=True)
+
+            # Calcular residuos
+            residuals_data = calculate_residuals(df, response_col, factor_a_col, factor_b_col, factor_c_col)
+
+            # Generar los 4 gráficos
+            diagnostic_plots = plot_residual_diagnostics(residuals_data)
+
+            # Mostrar los gráficos en un grid 2x2
+            col1, col2 = st.columns(2)
+
+            with col1:
+                st.plotly_chart(diagnostic_plots['qq_plot'], use_container_width=True)
+                st.markdown("""
+                <div style='background: #f8f9fa; padding: 0.75rem; border-radius: 6px; font-size: 0.9rem;'>
+                    <strong>✓ Interpretación:</strong> Si los puntos siguen la línea diagonal roja,
+                    los residuos siguen una distribución normal. Desviaciones indican problemas de normalidad.
+                </div>
+                """, unsafe_allow_html=True)
+
+            with col2:
+                st.plotly_chart(diagnostic_plots['fitted_plot'], use_container_width=True)
+                st.markdown("""
+                <div style='background: #f8f9fa; padding: 0.75rem; border-radius: 6px; font-size: 0.9rem;'>
+                    <strong>✓ Interpretación:</strong> Los residuos deben distribuirse aleatoriamente
+                    alrededor de cero sin patrones. Patrones indican heterocedasticidad o no linealidad.
+                </div>
+                """, unsafe_allow_html=True)
+
+            col3, col4 = st.columns(2)
+
+            with col3:
+                st.plotly_chart(diagnostic_plots['histogram'], use_container_width=True)
+                st.markdown("""
+                <div style='background: #f8f9fa; padding: 0.75rem; border-radius: 6px; font-size: 0.9rem;'>
+                    <strong>✓ Interpretación:</strong> El histograma debe seguir la curva normal (roja).
+                    Una forma de campana simétrica indica normalidad de residuos.
+                </div>
+                """, unsafe_allow_html=True)
+
+            with col4:
+                st.plotly_chart(diagnostic_plots['order_plot'], use_container_width=True)
+                st.markdown("""
+                <div style='background: #f8f9fa; padding: 0.75rem; border-radius: 6px; font-size: 0.9rem;'>
+                    <strong>✓ Interpretación:</strong> No debe haber tendencias ni patrones a lo largo
+                    del tiempo. Patrones sugieren correlación temporal o falta de independencia.
+                </div>
+                """, unsafe_allow_html=True)
     
     # ==================== TAB 4: VISUALIZACIONES ====================
     with tab4:
@@ -944,39 +1163,39 @@ Determinar si los factores <strong>{factor_a_col}</strong>, <strong>{factor_b_co
         # Identificar mejor tratamiento
         best = identify_best_treatment(df, response_col, factor_a_col, factor_b_col, factor_c_col)
         
-        # Mostrar el mejor tratamiento
+        # Mostrar el mejor tratamiento con columnas y métricas nativas de Streamlit
         st.markdown(f"""
         <div class="best-treatment-box">
             <h2 style="margin: 0; text-align: center;">🥇 TRATAMIENTO ÓPTIMO</h2>
             <h1 style="text-align: center; margin: 1rem 0; font-size: 2.5rem;">{best['treatment']}</h1>
-            
-            <div style="text-align: center; margin: 1.5rem 0;">
-                <h3 style="margin: 0;">Media de {response_col}</h3>
-                <h2 style="margin: 0.5rem 0; font-size: 3rem;">{best['mean']:.2f}</h2>
-                <p style="margin: 0; font-size: 1.2rem;">IC 95%: [{best['ci_lower']:.2f}, {best['ci_upper']:.2f}]</p>
-            </div>
-            
-            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-top: 2rem;">
-                <div style="text-align: center; background: rgba(255,255,255,0.2); padding: 1rem; border-radius: 8px;">
-                    <p style="margin: 0; font-size: 0.9rem;">Observaciones</p>
-                    <p style="margin: 0.5rem 0 0 0; font-size: 2rem; font-weight: 700;">{best['n']}</p>
-                </div>
-                <div style="text-align: center; background: rgba(255,255,255,0.2); padding: 1rem; border-radius: 8px;">
-                    <p style="margin: 0; font-size: 0.9rem;">Desv. Estándar</p>
-                    <p style="margin: 0.5rem 0 0 0; font-size: 2rem; font-weight: 700;">{best['std']:.2f}</p>
-                </div>
-                <div style="text-align: center; background: rgba(255,255,255,0.2); padding: 1rem; border-radius: 8px;">
-                    <p style="margin: 0; font-size: 0.9rem;">Error Estándar</p>
-                    <p style="margin: 0.5rem 0 0 0; font-size: 2rem; font-weight: 700;">{best['se']:.2f}</p>
-                </div>
-            </div>
-            
-            <div style="margin-top: 2rem; background: rgba(255,255,255,0.15); padding: 1.5rem; border-radius: 8px;">
-                <h4 style="margin: 0 0 1rem 0;">🎯 Condiciones Óptimas:</h4>
-                <p style="margin: 0.5rem 0; font-size: 1.2rem;"><strong>{factor_a_col}:</strong> {best['factor_a_value']}</p>
-                <p style="margin: 0.5rem 0; font-size: 1.2rem;"><strong>{factor_b_col}:</strong> {best['factor_b_value']}</p>
-                <p style="margin: 0.5rem 0; font-size: 1.2rem;"><strong>{factor_c_col}:</strong> {best['factor_c_value']}</p>
-            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Media y CI usando métricas de Streamlit
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.markdown(f"<h3 style='text-align: center; margin: 0;'>Media de {response_col}</h3>", unsafe_allow_html=True)
+            st.markdown(f"<h2 style='text-align: center; margin: 0.5rem 0; font-size: 3rem; color: #11998e;'>{best['mean']:.2f}</h2>", unsafe_allow_html=True)
+            st.markdown(f"<p style='text-align: center; margin: 0; font-size: 1.2rem;'>IC 95%: [{best['ci_lower']:.2f}, {best['ci_upper']:.2f}]</p>", unsafe_allow_html=True)
+
+        # Estadísticas en columnas
+        st.markdown("<br>", unsafe_allow_html=True)
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Observaciones", f"{int(best['n'])}")
+        with col2:
+            st.metric("Desv. Estándar", f"{best['std']:.2f}")
+        with col3:
+            st.metric("Error Estándar", f"{best['se']:.2f}")
+
+        # Condiciones óptimas
+        st.markdown(f"""
+        <div style="margin-top: 2rem; background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+                    padding: 1.5rem; border-radius: 10px; color: white;">
+            <h4 style="margin: 0 0 1rem 0; color: white;">🎯 Condiciones Óptimas:</h4>
+            <p style="margin: 0.5rem 0; font-size: 1.2rem;"><strong>{factor_a_col}:</strong> {best['factor_a_value']}</p>
+            <p style="margin: 0.5rem 0; font-size: 1.2rem;"><strong>{factor_b_col}:</strong> {best['factor_b_value']}</p>
+            <p style="margin: 0.5rem 0; font-size: 1.2rem;"><strong>{factor_c_col}:</strong> {best['factor_c_value']}</p>
         </div>
         """, unsafe_allow_html=True)
         
@@ -1029,98 +1248,92 @@ Determinar si los factores <strong>{factor_a_col}</strong>, <strong>{factor_b_co
             sig_BC = anova_table.loc[5, 'Significancia'] != 'ns'
             sig_ABC = anova_table.loc[6, 'Significancia'] != 'ns'
             
-            st.markdown(f"""
-            <div class="section-box" style="background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);">
-                <h3 style="color: #667eea;">📊 Resumen del Análisis DCA Trifactorial</h3>
-                
-                <h4>🔬 Diseño Experimental:</h4>
-                <ul>
-                    <li><strong>Tipo:</strong> DCA Trifactorial {df[factor_a_col].nunique()}×{df[factor_b_col].nunique()}×{df[factor_c_col].nunique()}</li>
-                    <li><strong>Total observaciones:</strong> {len(df)}</li>
-                    <li><strong>Tratamientos:</strong> {df[factor_a_col].nunique() * df[factor_b_col].nunique() * df[factor_c_col].nunique()}</li>
-                    <li><strong>Variable respuesta:</strong> {response_col}</li>
-                </ul>
-                
-                <h4>📈 Resultados ANOVA:</h4>
-                <table style="width: 100%; border-collapse: collapse; margin: 1rem 0;">
-                    <thead>
-                        <tr style="background: #667eea; color: white;">
-                            <th style="padding: 0.75rem; text-align: left;">Fuente</th>
-                            <th style="padding: 0.75rem; text-align: center;">Significativo</th>
-                            <th style="padding: 0.75rem; text-align: center;">Interpretación</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr style="background: #f8f9fa;">
-                            <td style="padding: 0.75rem;">Factor C ({factor_c_col})</td>
-                            <td style="padding: 0.75rem; text-align: center;">{"✅ Sí" if sig_C else "❌ No"}</td>
-                            <td style="padding: 0.75rem;">{"Efecto significativo" if sig_C else "Sin efecto"}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 0.75rem;">Interacción A×B</td>
-                            <td style="padding: 0.75rem; text-align: center;">{"⚠️ Sí" if sig_AB else "✅ No"}</td>
-                            <td style="padding: 0.75rem;">{"Interacción presente" if sig_AB else "Sin interacción"}</td>
-                        </tr>
-                        <tr style="background: #f8f9fa;">
-                            <td style="padding: 0.75rem;">Interacción A×C</td>
-                            <td style="padding: 0.75rem; text-align: center;">{"⚠️ Sí" if sig_AC else "✅ No"}</td>
-                            <td style="padding: 0.75rem;">{"Interacción presente" if sig_AC else "Sin interacción"}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 0.75rem;">Interacción B×C</td>
-                            <td style="padding: 0.75rem; text-align: center;">{"⚠️ Sí" if sig_BC else "✅ No"}</td>
-                            <td style="padding: 0.75rem;">{"Interacción presente" if sig_BC else "Sin interacción"}</td>
-                        </tr>
-                        <tr style="background: #f8f9fa;">
-                            <td style="padding: 0.75rem;">Interacción A×B×C</td>
-                            <td style="padding: 0.75rem; text-align: center;">{"⚠️ Sí" if sig_ABC else "✅ No"}</td>
-                            <td style="padding: 0.75rem;">{"Interacción triple" if sig_ABC else "Sin interacción triple"}</td>
-                        </tr>
-                    </tbody>
-                </table>
-                
-                <h4>🎯 Calidad del Modelo:</h4>
-                <ul>
-                    <li><strong>CV:</strong> {anova_results['CV']:.2f}% - {"Excelente precisión experimental" if anova_results['CV'] < 10 else "Buena precisión" if anova_results['CV'] < 20 else "Precisión aceptable" if anova_results['CV'] < 30 else "Variabilidad alta"}</li>
-                    <li><strong>R²:</strong> {anova_results['R_squared']:.4f} - El modelo explica el {anova_results['R_squared']*100:.1f}% de la variabilidad</li>
-                    <li><strong>Error estándar:</strong> {np.sqrt(anova_results['MSE']):.2f}</li>
-                </ul>
-                
-                <h4>🏆 Tratamiento Óptimo:</h4>
-                <ul>
-                    <li><strong>Combinación:</strong> {best['treatment']}</li>
-                    <li><strong>Media:</strong> {best['mean']:.2f} ± {best['se']:.2f}</li>
-                    <li><strong>IC 95%:</strong> [{best['ci_lower']:.2f}, {best['ci_upper']:.2f}]</li>
-                    <li><strong>Condiciones:</strong>
-                        <ul>
-                            <li>{factor_a_col} = {best['factor_a_value']}</li>
-                            <li>{factor_b_col} = {best['factor_b_value']}</li>
-                            <li>{factor_c_col} = {best['factor_c_value']}</li>
-                        </ul>
-                    </li>
-                </ul>
-                
-                <h4>💡 Conclusiones Principales:</h4>
-                <ol>
-                    <li>Se analizó un diseño trifactorial con {len(df)} observaciones totales</li>
-                    <li>{"El Factor A muestra efecto significativo sobre la respuesta" if sig_A else "El Factor A no afecta significativamente la respuesta"}</li>
-                    <li>{"El Factor B muestra efecto significativo sobre la respuesta" if sig_B else "El Factor B no afecta significativamente la respuesta"}</li>
-                    <li>{"El Factor C muestra efecto significativo sobre la respuesta" if sig_C else "El Factor C no afecta significativamente la respuesta"}</li>
-                    <li>{"Se detectaron interacciones significativas que deben considerarse" if (sig_AB or sig_AC or sig_BC or sig_ABC) else "No hay interacciones significativas entre factores"}</li>
-                    <li>El tratamiento óptimo es <strong>{best['treatment']}</strong> con media de {best['mean']:.2f}</li>
-                </ol>
-                
-                <h4>📋 Recomendaciones:</h4>
-                <ul>
-                    <li>✅ Implementar las condiciones del tratamiento óptimo identificado</li>
-                    <li>✅ Realizar validación con experimentos confirmatorios</li>
-                    <li>✅ Establecer procedimientos operativos estándar (SOP)</li>
-                    <li>✅ Implementar control estadístico de procesos</li>
-                    <li>✅ Capacitar al personal en las nuevas condiciones</li>
-                    {"<li>⚠️ Prestar especial atención a las interacciones detectadas</li>" if (sig_AB or sig_AC or sig_BC or sig_ABC) else ""}
-                </ul>
-            </div>
-            """, unsafe_allow_html=True)
+            # Resumen usando componentes nativos de Streamlit
+            st.markdown('<div class="section-box" style="background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);">', unsafe_allow_html=True)
+            st.markdown('<h3 style="color: #667eea;">📊 Resumen del Análisis DCA Trifactorial</h3>', unsafe_allow_html=True)
+
+            st.markdown("### 🔬 Diseño Experimental:")
+            st.write(f"- **Tipo:** DCA Trifactorial {df[factor_a_col].nunique()}×{df[factor_b_col].nunique()}×{df[factor_c_col].nunique()}")
+            st.write(f"- **Total observaciones:** {len(df)}")
+            st.write(f"- **Tratamientos:** {df[factor_a_col].nunique() * df[factor_b_col].nunique() * df[factor_c_col].nunique()}")
+            st.write(f"- **Variable respuesta:** {response_col}")
+
+            st.markdown("### 📈 Resultados ANOVA:")
+
+            # Crear DataFrame para la tabla de resultados
+            results_df = pd.DataFrame({
+                'Fuente': [
+                    f'Factor A ({factor_a_col})',
+                    f'Factor B ({factor_b_col})',
+                    f'Factor C ({factor_c_col})',
+                    'Interacción A×B',
+                    'Interacción A×C',
+                    'Interacción B×C',
+                    'Interacción A×B×C'
+                ],
+                'Significativo': [
+                    '✅ Sí' if sig_A else '❌ No',
+                    '✅ Sí' if sig_B else '❌ No',
+                    '✅ Sí' if sig_C else '❌ No',
+                    '⚠️ Sí' if sig_AB else '✅ No',
+                    '⚠️ Sí' if sig_AC else '✅ No',
+                    '⚠️ Sí' if sig_BC else '✅ No',
+                    '⚠️ Sí' if sig_ABC else '✅ No'
+                ],
+                'Interpretación': [
+                    'Efecto significativo' if sig_A else 'Sin efecto',
+                    'Efecto significativo' if sig_B else 'Sin efecto',
+                    'Efecto significativo' if sig_C else 'Sin efecto',
+                    'Interacción presente' if sig_AB else 'Sin interacción',
+                    'Interacción presente' if sig_AC else 'Sin interacción',
+                    'Interacción presente' if sig_BC else 'Sin interacción',
+                    'Interacción triple' if sig_ABC else 'Sin interacción triple'
+                ]
+            })
+            st.dataframe(results_df, use_container_width=True, hide_index=True)
+
+            st.markdown("### 🎯 Calidad del Modelo:")
+            cv_interp = "Excelente precisión experimental" if anova_results['CV'] < 10 else "Buena precisión" if anova_results['CV'] < 20 else "Precisión aceptable" if anova_results['CV'] < 30 else "Variabilidad alta"
+            st.write(f"- **CV:** {anova_results['CV']:.2f}% - {cv_interp}")
+            st.write(f"- **R²:** {anova_results['R_squared']:.4f} - El modelo explica el {anova_results['R_squared']*100:.1f}% de la variabilidad")
+            st.write(f"- **Error estándar:** {np.sqrt(anova_results['MSE']):.2f}")
+
+            st.markdown("### 🏆 Tratamiento Óptimo:")
+            st.write(f"- **Combinación:** {best['treatment']}")
+            st.write(f"- **Media:** {best['mean']:.2f} ± {best['se']:.2f}")
+            st.write(f"- **IC 95%:** [{best['ci_lower']:.2f}, {best['ci_upper']:.2f}]")
+            st.write("- **Condiciones:**")
+            st.write(f"  - {factor_a_col} = {best['factor_a_value']}")
+            st.write(f"  - {factor_b_col} = {best['factor_b_value']}")
+            st.write(f"  - {factor_c_col} = {best['factor_c_value']}")
+
+            st.markdown("### 💡 Conclusiones Principales:")
+            conclusions = [
+                f"Se analizó un diseño trifactorial con {len(df)} observaciones totales",
+                "El Factor A muestra efecto significativo sobre la respuesta" if sig_A else "El Factor A no afecta significativamente la respuesta",
+                "El Factor B muestra efecto significativo sobre la respuesta" if sig_B else "El Factor B no afecta significativamente la respuesta",
+                "El Factor C muestra efecto significativo sobre la respuesta" if sig_C else "El Factor C no afecta significativamente la respuesta",
+                "Se detectaron interacciones significativas que deben considerarse" if (sig_AB or sig_AC or sig_BC or sig_ABC) else "No hay interacciones significativas entre factores",
+                f"El tratamiento óptimo es **{best['treatment']}** con media de {best['mean']:.2f}"
+            ]
+            for i, conclusion in enumerate(conclusions, 1):
+                st.write(f"{i}. {conclusion}")
+
+            st.markdown("### 📋 Recomendaciones:")
+            recommendations = [
+                "✅ Implementar las condiciones del tratamiento óptimo identificado",
+                "✅ Realizar validación con experimentos confirmatorios",
+                "✅ Establecer procedimientos operativos estándar (SOP)",
+                "✅ Implementar control estadístico de procesos",
+                "✅ Capacitar al personal en las nuevas condiciones"
+            ]
+            if sig_AB or sig_AC or sig_BC or sig_ABC:
+                recommendations.append("⚠️ Prestar especial atención a las interacciones detectadas")
+
+            for rec in recommendations:
+                st.write(f"- {rec}")
+
+            st.markdown('</div>', unsafe_allow_html=True)
         
         # Exportar resultados
         st.markdown("---")
